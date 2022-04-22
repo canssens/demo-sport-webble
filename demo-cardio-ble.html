@@ -1,0 +1,167 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Web Bluetooth / Cardio Heart rate BLE</title>
+    <script>
+      // Add a global error event listener early on in the page load, to help ensure that browsers
+      // which don't support specific functionality still end up displaying a meaningful message.
+      window.addEventListener('error', function(error) {
+        if (ChromeSamples && ChromeSamples.setStatus) {
+          console.error(error);
+          ChromeSamples.setStatus(error.message + ' (Your browser may not support this feature.)');
+          error.preventDefault();
+        }
+      });
+    </script>
+        
+    
+  </head>
+
+  <body>
+    
+    <h1>Web Bluetooth / Cardio Heart rate BLE</h1>
+  
+    <h2>Control</h2>
+    <button id="readHeartRateMeasure">Connect HR BLE</button>
+    
+
+    <h2>Result</h2>
+    <div style="background-color:brown; font-size: 50px;" id="valueHR">Null</div>
+
+    <h2>Live Output</h2>
+    <div id="output" class="output">
+      <div id="content"></div>
+      <div id="status"></div>
+      <pre id="log"></pre>
+    </div>
+
+
+  <script>
+    //Log management
+    var ChromeSamples = {
+      log: function() {
+        var line = Array.prototype.slice.call(arguments).map(function(argument) {
+          return typeof argument === 'string' ? argument : JSON.stringify(argument);
+        }).join(' ');
+  
+        document.querySelector('#log').textContent += line + '\n';
+      },
+  
+      clearLog: function() {
+        document.querySelector('#log').textContent = '';
+      },
+  
+      setStatus: function(status) {
+        document.querySelector('#status').textContent = status;
+      },
+  
+      setContent: function(newContent) {
+        var content = document.querySelector('#content');
+        while(content.hasChildNodes()) {
+          content.removeChild(content.lastChild);
+        }
+        content.appendChild(newContent);
+      }
+    };
+  </script>
+
+  <script>
+    var bluetoothDevice;
+    var HeartRateMeasureCharacteristic;
+    
+    async function onReadHeartRateMeasureButtonClick() {
+      try {
+        if (!bluetoothDevice) {
+          await requestDevice();
+        }
+        await connectDeviceAndCacheCharacteristics();
+    
+        log('Starting HR Notifications...');
+        await HeartRateMeasureCharacteristic.startNotifications();
+        log('> Notifications started');
+
+      } catch(error) {
+        log('Argh! ' + error);
+      }
+    }
+    
+    async function requestDevice() {
+      log('Requesting any Bluetooth Device...');
+      bluetoothDevice = await navigator.bluetooth.requestDevice({
+        filters:[{
+            services: ['heart_rate'],
+        }],
+          acceptAllDevices: true,
+          optionalServices: ['heart_rate']});
+
+        log('> Name:             ' + bluetoothDevice.name);
+        log('> Id:               ' + bluetoothDevice.id);
+        log('> Connected:        ' + bluetoothDevice.gatt.connected);
+    }
+    
+    async function connectDeviceAndCacheCharacteristics() {
+      if (bluetoothDevice.gatt.connected && HeartRateMeasureCharacteristic) {
+        return;
+      }
+    
+      log('Connecting to GATT Server...');
+      const server = await bluetoothDevice.gatt.connect();
+    
+      log('Getting heart_rate Service...');
+      const service = await server.getPrimaryService('heart_rate');
+    
+      log('Getting heart_rate_measurement Level Characteristic...');
+      HeartRateMeasureCharacteristic = await service.getCharacteristic('heart_rate_measurement');
+    
+      HeartRateMeasureCharacteristic.addEventListener('characteristicvaluechanged',
+          handleHeartRateMeasureChanged);
+
+    }
+    
+    /* This function will be called when `readValue` resolves and
+     * characteristic value changes since `characteristicvaluechanged` event
+     * listener has been added. */
+    function handleHeartRateMeasureChanged(event) {
+      let HeartRateMeasure = event.target.value.getUint8(1);
+      log('> HR Level is ' + HeartRateMeasure );
+      document.querySelector('#valueHR').style.backgroundColor = "chartreuse";
+      document.querySelector('#valueHR').textContent = HeartRateMeasure;
+    }
+</script>
+
+
+
+<script>
+    document.querySelector('#readHeartRateMeasure').addEventListener('click', function() {
+      if (isWebBluetoothEnabled()) {
+        onReadHeartRateMeasureButtonClick();
+      }
+    });
+  
+</script>
+
+
+
+  <script>
+    log = ChromeSamples.log;
+  
+    function isWebBluetoothEnabled() {
+      if (navigator.bluetooth) {
+        return true;
+      } else {
+        ChromeSamples.setStatus('Web Bluetooth API is not available.\n' +
+            'Please make sure the "Experimental Web Platform features" flag is enabled.');
+        return false;
+      }
+    }
+  </script>
+
+    
+
+  </body>
+</html>

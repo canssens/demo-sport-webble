@@ -1,0 +1,207 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Web Bluetooth / DIAG BLE</title>
+    <script>
+      // Add a global error event listener early on in the page load, to help ensure that browsers
+      // which don't support specific functionality still end up displaying a meaningful message.
+      window.addEventListener('error', function(error) {
+        if (ChromeSamples && ChromeSamples.setStatus) {
+          console.error(error);
+          ChromeSamples.setStatus(error.message + ' (Your browser may not support this feature.)');
+          error.preventDefault();
+        }
+      });
+    </script>
+        
+    
+  </head>
+
+  <body>
+    
+    <h1>Web Bluetooth / Diag BLE</h1>
+  
+    <h2>Control</h2>
+    <button id="readFTMSMeasure">Connect FTMS Diag BLE</button>
+    
+
+    
+    <h2>Live Output</h2>
+    <div id="output" class="output">
+      <div id="content"></div>
+      <div id="status"></div>
+      <pre id="log"></pre>
+    </div>
+
+
+  <script>
+    //Log management
+    var ChromeSamples = {
+      log: function() {
+        var line = Array.prototype.slice.call(arguments).map(function(argument) {
+          return typeof argument === 'string' ? argument : JSON.stringify(argument);
+        }).join(' ');
+  
+        document.querySelector('#log').textContent += line + '\n';
+      },
+  
+      clearLog: function() {
+        document.querySelector('#log').textContent = '';
+      },
+  
+      setStatus: function(status) {
+        document.querySelector('#status').textContent = status;
+      },
+  
+      setContent: function(newContent) {
+        var content = document.querySelector('#content');
+        while(content.hasChildNodes()) {
+          content.removeChild(content.lastChild);
+        }
+        content.appendChild(newContent);
+      }
+    };
+  </script>
+
+  <script>
+    var bluetoothDevice;
+    var FTMSMeasureCharacteristic;
+    
+    async function onReadFTMSMeasureButtonClick() {
+      try {
+        if (!bluetoothDevice) {
+          await requestDevice();
+        }
+        await connectDeviceAndCacheCharacteristics();
+    
+
+      } catch(error) {
+        log('Argh! ' + error);
+      }
+    }
+    
+    async function requestDevice() {
+      log('Requesting any Bluetooth Device...');
+      bluetoothDevice = await navigator.bluetooth.requestDevice({
+        filters:[{
+            services: [parseInt('0x1826')],
+        }],
+          //acceptAllDevices: true,
+          optionalServices: [parseInt('0x180A')]});
+
+        log('> Name:             ' + bluetoothDevice.name);
+        log('> Id:               ' + bluetoothDevice.id);
+        log('> Connected:        ' + bluetoothDevice.gatt.connected);
+    }
+    
+    async function connectDeviceAndCacheCharacteristics() {
+      if (bluetoothDevice.gatt.connected && FTMSMeasureCharacteristic) {
+        return;
+      }
+    
+      log('Connecting to GATT Server...');
+      const server = await bluetoothDevice.gatt.connect();
+      
+
+      log('Getting ftms Service...');
+      const service = await server.getPrimaryService(parseInt('0x180A'));
+    
+      log('Getting ftms treadmill Characteristic...');
+      var enc = new TextDecoder("utf-8");
+
+
+      ManufacturerCharacteristic = await service.getCharacteristic(parseInt('0x2A29'));
+      const value = await ManufacturerCharacteristic.readValue();
+      log('> Manufacturer Name String ' + enc.decode(value));
+
+      ModelCharacteristic = await service.getCharacteristic(parseInt('0x2A24'));
+      const valueModel = await ModelCharacteristic.readValue();
+      log('> Model Number String ' + enc.decode(valueModel));
+
+      /*
+      SerialCharacteristic = await service.getCharacteristic(parseInt('0x2A25'));
+      const valueSerial = await SerialCharacteristic.readValue();
+      log('> Serial Name String ' + enc.decode(valueSerial));
+      
+
+      HardwareCharacteristic = await service.getCharacteristic(parseInt('0x2A27'));
+      const valueHardware = await HardwareCharacteristic.readValue();
+      log('> Hardware Revision String ' + enc.decode(valueHardware));
+
+      */
+      FirmwareCharacteristic = await service.getCharacteristic(parseInt('0x2A26'));
+      const valueFirmware = await FirmwareCharacteristic.readValue();
+      log('> Firmware Revision String ' + enc.decode(valueFirmware));
+
+      SoftwareCharacteristic = await service.getCharacteristic(parseInt('0x2A28'));
+      const valueSoftware = await SoftwareCharacteristic.readValue();
+      log('> Software Revision String ' + enc.decode(valueSoftware));
+      
+
+      //GATT Service 0x180A Device Information
+      //GATT Characteristic and Object Type 0x2A29 Manufacturer Name String
+      /*
+      
+        2. Model Number String
+        3. Serial Number String
+        4. Hardware Revision String
+        5. Firmware Revision String
+        6. Software Revision String
+        */
+      //GATT Characteristic and Object Type 0x2A00 Device Name
+      /*
+      await FTMSCharacteristic.startNotifications();
+
+        log('> Notifications started');
+        FTMSCharacteristic.addEventListener('characteristicvaluechanged',
+            handleNotifications);
+      */
+
+    }
+    
+    
+    /* This function will be called when `readValue` resolves and
+     * characteristic value changes since `characteristicvaluechanged` event
+     * listener has been added. */
+    function handleFTMSChanged(event) {
+      let FTMSMeasure = event.target.value.getUint8(1);
+      log('> FTMS Level is ' + FTMSMeasure + '%');
+    }
+</script>
+
+
+
+<script>
+    document.querySelector('#readFTMSMeasure').addEventListener('click', function() {
+      if (isWebBluetoothEnabled()) {
+        onReadFTMSMeasureButtonClick();
+      }
+    });
+  
+</script>
+
+
+
+  <script>
+    log = ChromeSamples.log;
+  
+    function isWebBluetoothEnabled() {
+      if (navigator.bluetooth) {
+        return true;
+      } else {
+        ChromeSamples.setStatus('Web Bluetooth API is not available.\n' +
+            'Please make sure the "Experimental Web Platform features" flag is enabled.');
+        return false;
+      }
+    }
+  </script>
+
+    
+
+  </body>
+</html>
