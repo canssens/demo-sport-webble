@@ -7,9 +7,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
     <title>Web Bluetooth / FTMS BLE Indoor Bike</title>  
-    
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.js"></script>    
     <style>
-      td { font-size: 50px; padding: 15px; }
+      td { font-size: 30px; padding: 15px; }
     </style>
     
   </head>
@@ -21,14 +22,6 @@
     <h2>Control</h2>
     <button id="readFTMSMeasure">Connect FTMS BLE Indoor Bike</button>
     
-
-    <h2>Result</h2>
-    <div style="background-color:brown; font-size: 50px;" id="valueSpeed">Null</div>
-
-    <br />
-    <br />
-
-
     <table>
       <tr>
         <td>SPEED</td>
@@ -42,72 +35,110 @@
       </tr>
     </table>
 
-    <h2>Live Output</h2>
-    <div id="output" class="output">
-      <div id="content"></div>
-      <div id="status"></div>
-      <pre id="log"></pre>
-    </div>
+    <div id="graphSpeed" style="width:100%;height: 20vh;"></div>
+    <div id="graphCadence" style="width:100%;height: 20vh;"></div>
+    <div id="graphPower" style="width:100%;height: 20vh;"></div>
+    <div id="graphDistance" style="width:100%;height: 20vh;"></div>
+    <div id="graphHR" style="width:100%;height: 20vh;"></div>
+
 
 
 
   <script>
+
+    //Init chart
+    var domSpeed = document.getElementById('graphSpeed');
+    var domCadence = document.getElementById('graphCadence');
+    var domPower = document.getElementById('graphPower');
+    var domDistance = document.getElementById('graphDistance');
+    var domHR = document.getElementById('graphHR');
+    
+
+    var chartSpeed = echarts.init(domSpeed, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartCadence = echarts.init(domCadence, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartPower = echarts.init(domPower, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartDistance = echarts.init(domDistance, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartHR = echarts.init(domHR, null, { renderer: 'canvas', useDirtyRect: false  });
+
+    var option;
+    option = {
+      title: {
+          text: 'Graph'
+        },
+    xAxis: {
+        type: 'category'
+    },
+    yAxis: {
+        type: 'value'
+    },
+    series: [
+        {
+        data: [],
+        type: 'line',
+        smooth: false
+        }
+    ]
+    };
+
+    chartSpeed.setOption(option);
+    chartCadence.setOption(option);
+    chartPower.setOption(option);
+    chartDistance.setOption(option);
+    chartHR.setOption(option);
+    
+
+    window.addEventListener('resize', chartSpeed.resize);
+    window.addEventListener('resize', chartCadence.resize);
+    window.addEventListener('resize', chartPower.resize);
+    window.addEventListener('resize', chartDistance.resize);
+    window.addEventListener('resize', chartHR.resize);
+
+
+
     var bluetoothDevice;
     var FTMSMeasureCharacteristic;
-    
-    async function onReadFTMSMeasureButtonClick() {
-      try {
-        if (!bluetoothDevice) {
-          await requestDevice();
-        }
-        await connectDeviceAndCacheCharacteristics();
-    
-        console.log('Starting FTMS Notifications...');
-        //console.log(FTMSMeasureCharacteristic.readValue());
-        //await FTMSMeasureCharacteristic.startNotifications();
-        console.log('> Notifications started');
 
-      } catch(error) {
+    var dataSpeed = [];
+    var dataPower = [];
+    var dataCadence = [];
+    var dataDistance = [];
+    var dataHR = [];
+    
+    
+    const serviceFTMS = 0x1826;
+    const indoorBikeData = 0x2AD2;
+
+    function connect() {
+      console.log('Requesting FTMS Bluetooth Device...');
+      navigator.bluetooth.requestDevice({
+            filters:[{
+                services: [serviceFTMS],
+            }],
+              //acceptAllDevices: true,
+              optionalServices: ['heart_rate']}).
+        then(device => {
+        console.log('Connecting to GATT Server...');
+        return device.gatt.connect();
+      })
+      .then(server => {
+        console.log('Getting Service...');
+        return server.getPrimaryService(serviceFTMS);
+      })
+      .then(service => {
+        console.log('Getting Characteristic...');
+        return service.getCharacteristic(indoorBikeData);
+      })
+      .then(characteristic => {
+        var indoorBikeDataCharacteristic = characteristic;
+        return indoorBikeDataCharacteristic.startNotifications().then(_ => {
+          console.log('> Notifications started');
+          indoorBikeDataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+        });
+      })
+      .catch(error => {
         console.log('Argh! ' + error);
-      }
-    }
-    
-    async function requestDevice() {
-      console.log('Requesting any Bluetooth Device...');
-      bluetoothDevice = await navigator.bluetooth.requestDevice({
-        filters:[{
-            services: [parseInt('0x1826')],
-        }],
-          //acceptAllDevices: true,
-          optionalServices: ['heart_rate']});
-
-          console.log('> Name:             ' + bluetoothDevice.name);
-          console.log('> Id:               ' + bluetoothDevice.id);
-          console.log('> Connected:        ' + bluetoothDevice.gatt.connected);
-    }
-    
-    async function connectDeviceAndCacheCharacteristics() {
-      if (bluetoothDevice.gatt.connected && FTMSMeasureCharacteristic) {
-        return;
-      }
-    
-      console.log('Connecting to GATT Server...');
-      const server = await bluetoothDevice.gatt.connect();
+      });
       
-
-      console.log('Getting ftms Service...');
-      const service = await server.getPrimaryService(parseInt('0x1826'));
-    
-      console.log('Getting ftms treadmill Characteristic...');
-      FTMSCharacteristic = await service.getCharacteristic(parseInt('0x2ad2'));//
-      
-      await FTMSCharacteristic.startNotifications();
-
-      console.log('> Notifications started');
-        FTMSCharacteristic.addEventListener('characteristicvaluechanged',
-            handleNotifications);
-      
-
     }
     
     /* This function will be called when `readValue` resolves and
@@ -123,11 +154,9 @@
             a.push('0x' + ('00' + value.getUint8(i).toString(16)).slice(-2));
         }
         console.log('> ' + a.join(' '));
-        //log('> ' + (value.getUint16(2, /*littleEndian=*/true)/100));
 
         flags = value.getUint16(0, /*littleEndian=*/true);
         nextPosition = 4 // 2octets for flags, 2octets for instant speed
-        //log('> flags' + flags);
 
         /*     
         Example here of a flags to indicate which data is present in the data message
@@ -217,8 +246,6 @@
 
         // instantaneous speed
         speed = value.getUint16(2, /*littleEndian=*/true)/100;
-        document.querySelector('#valueSpeed').style.backgroundColor = "chartreuse";
-        document.querySelector('#valueSpeed').textContent = speed;
         document.querySelector('#valueTabSpeed').textContent = speed;
 
         //distance
@@ -228,11 +255,15 @@
         distance = distance + distance_complement;
         console.log('> Distance ' + distance);
 
+        dataSpeed.push(speed);
+        dataDistance.push(distance);
+
         if (typeof posInstPower != "undefined")
         {
           //console.log('> POWER ' + (value.getInt16(posInstPower, /*littleEndian=*/true)));
           power = value.getInt16(posInstPower, /*littleEndian=*/true);
           document.querySelector('#valueTabPower').textContent = power;
+          dataPower.push(power);
         }
 
         if (typeof posInstCadence != "undefined")
@@ -240,17 +271,46 @@
           //console.log('> Cadence ' + (value.getUint16(posInstCadence, /*littleEndian=*/true)*0.5));
           cadence =  (value.getUint16(posInstCadence, /*littleEndian=*/true)*0.5);
           document.querySelector('#valueTabCadence').textContent = cadence;
+          dataCadence.push(cadence);
         }
 
         if (typeof posHR != "undefined")
         {
           console.log('> HR ' + (value.getUint8(posHR, /*littleEndian=*/true)));
+          hr = value.getUint8(posHR, /*littleEndian=*/true);
+          dataHR.push(hr);
         }
 
         if (typeof posElaspedTime != "undefined")
         {
           console.log('> Elapsed time ' + (value.getUint16(posElaspedTime, /*littleEndian=*/true)));
         }
+
+        updateCharts();
+      }
+
+      function updateCharts()
+      {
+        option.series[0].data = dataHR;
+        option.title.text = "HR";
+        chartHR.setOption(option);
+
+        option.series[0].data = dataCadence;
+        option.title.text = "Cadence";
+        chartCadence.setOption(option);
+
+        option.series[0].data = dataSpeed;
+        option.title.text = "Speed";
+        chartSpeed.setOption(option);
+
+        option.series[0].data = dataPower;
+        option.title.text = "Power";
+        chartPower.setOption(option);
+
+        option.series[0].data = dataDistance;
+        option.title.text = "Distance";
+        chartDistance.setOption(option);
+
       }
     
 
@@ -261,7 +321,7 @@
 <script>
     document.querySelector('#readFTMSMeasure').addEventListener('click', function() {
       if (isWebBluetoothEnabled()) {
-        onReadFTMSMeasureButtonClick();
+        connect();
       }
     });
   
