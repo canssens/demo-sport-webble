@@ -32,6 +32,11 @@
 
     
     <h2>Live Output</h2>
+
+    <table border="1" id="dataTable">
+      <tr ><td>Field</td><td>Data</td></tr>
+    </table>
+
     <div id="output" class="output">
       <div id="content"></div>
       <div id="status"></div>
@@ -66,6 +71,21 @@
         content.appendChild(newContent);
       }
     };
+
+    function addRow(tableID, field, data) {
+      // Get a reference to the table
+      let tableRef = document.getElementById(tableID);
+
+      // Insert a row at the end of the table
+      let newRow = tableRef.insertRow(-1);
+
+      // Insert a cell in the row at index 0
+      let newCell1 = newRow.insertCell(0);
+      let newCell2 = newRow.insertCell(1);
+
+      newCell1.innerHTML = field;
+      newCell2.innerHTML = data;
+    }
   </script>
 
   <script>
@@ -94,9 +114,11 @@
           //acceptAllDevices: true,
           optionalServices: [parseInt('0x180A')]});
 
-        log('> Name:             ' + bluetoothDevice.name);
-        log('> Id:               ' + bluetoothDevice.id);
-        log('> Connected:        ' + bluetoothDevice.gatt.connected);
+        addRow("dataTable", "name", bluetoothDevice.name);
+        addRow("dataTable", "Id", bluetoothDevice.id);
+        addRow("dataTable", "Connected", bluetoothDevice.gatt.connected);
+
+        
     }
     
     async function connectDeviceAndCacheCharacteristics() {
@@ -117,30 +139,33 @@
 
       ManufacturerCharacteristic = await service.getCharacteristic(parseInt('0x2A29'));
       const value = await ManufacturerCharacteristic.readValue();
-      log('> Manufacturer Name String ' + enc.decode(value));
+      addRow("dataTable", "Manufacturer Name", enc.decode(value));
+      
 
       ModelCharacteristic = await service.getCharacteristic(parseInt('0x2A24'));
       const valueModel = await ModelCharacteristic.readValue();
-      log('> Model Number String ' + enc.decode(valueModel));
+      addRow("dataTable", "Model Number", enc.decode(valueModel));
+      
 
       /*
       SerialCharacteristic = await service.getCharacteristic(parseInt('0x2A25'));
       const valueSerial = await SerialCharacteristic.readValue();
       log('> Serial Name String ' + enc.decode(valueSerial));
-      
+      */
 
       HardwareCharacteristic = await service.getCharacteristic(parseInt('0x2A27'));
       const valueHardware = await HardwareCharacteristic.readValue();
-      log('> Hardware Revision String ' + enc.decode(valueHardware));
+      addRow("dataTable", "Hardware Revision", enc.decode(valueHardware));
 
-      */
+
+      
       FirmwareCharacteristic = await service.getCharacteristic(parseInt('0x2A26'));
       const valueFirmware = await FirmwareCharacteristic.readValue();
-      log('> Firmware Revision String ' + enc.decode(valueFirmware));
+      addRow("dataTable", "Firmware Revision", enc.decode(valueFirmware));
 
       SoftwareCharacteristic = await service.getCharacteristic(parseInt('0x2A28'));
       const valueSoftware = await SoftwareCharacteristic.readValue();
-      log('> Software Revision String ' + enc.decode(valueSoftware));
+      addRow("dataTable", "Software Revision", enc.decode(valueSoftware));
       
 
       //GATT Service 0x180A Device Information
