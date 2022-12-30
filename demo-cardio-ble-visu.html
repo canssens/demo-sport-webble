@@ -1,0 +1,406 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Web Bluetooth / Cardio Heart rate BLE</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.js"></script>  
+        
+    
+  </head>
+
+
+
+  <body>
+    
+    <h1>Cardio Heart rate BLE</h1>
+  
+    <button id="readHeartRateMeasure">Connect HR BLE</button>
+    
+
+    <table style="width:100%;height:300px">
+      <tr>
+        <td style="width:50%;"><div id="graphJauge" style="width:100%;height:300px"></div></td>
+        <td style="width:50%;"><div id="graphZone" style="width:100%;height:300px"></div></td>
+      </tr>
+    </table>
+
+    <div id="graphHR" style="width:100%;height: 40vh;"></div>
+
+
+   
+
+
+
+  <script>
+    var bluetoothDevice;
+    var HeartRateMeasureCharacteristic;
+    var bufferBpm = [];
+    var startTime = 0;
+
+
+    var domHR = document.getElementById('graphHR');
+    var chartHR = echarts.init(domHR, null, { renderer: 'canvas', useDirtyRect: false  });
+    var option_graph;
+    option_graph = {
+      title: {
+          text: 'Graph'
+        },
+    xAxis: {
+        type: 'category'
+    },
+    yAxis: {
+        type: 'value'
+    },
+    series: [
+        {
+        data: [],
+        type: 'line',
+        smooth: false
+        }
+    ]
+    };
+    chartHR.setOption(option_graph);
+    window.addEventListener('resize', chartHR.resize);
+
+
+    var dataHR = [];
+
+    var chartDom = document.getElementById('graphJauge');
+    var myChart = echarts.init(chartDom);
+    var option;
+
+
+/*
+    if(percentCardio<=60)
+        {
+            //BLUE: WARM-UP / RECOVERY 50 to 60% of your %cardio
+            document.querySelector('#bpmcolor').style.color = "blue";
+        }
+        else if(percentCardio<=70)
+        {
+            //GREEN: FUNDAMENTAL ENDURANCE 60 to 70% of your %cardio
+             document.querySelector('#bpmcolor').style.color = "green";
+        }
+        else if(percentCardio<=80)
+        {
+            //YELLOW: ACTIVE ENDURANCE 70 to 80% of your %cardio
+             document.querySelector('#bpmcolor').style.color = "yellow";
+        }
+        else if(percentCardio<=90)
+        {
+            //ORANGE: RESISTANCE 80 to 90% of your %cardio
+             document.querySelector('#bpmcolor').style.color = "orange";
+
+        }
+        else
+        {
+            //RED: HEAVY RESISTANCE > 90% of your %cardio
+
+*/
+    
+    option = {
+      series: [
+        {
+          type: 'gauge',
+          min:50,
+          max:220,
+          axisLine: {
+            lineStyle: {
+              width: 30,
+              color: [
+                [0.5, '#67e0e3'],
+                [0.6, 'green'],
+                [0.7, 'yellow'],
+                [0.8, 'orange'],
+                [1, '#fd666d']
+              ]
+            }
+          },
+          pointer: {
+            itemStyle: {
+              color: 'red'
+            }
+          },
+          axisTick: {
+            distance: -30,
+            length: 8,
+            lineStyle: {
+              color: '#fff',
+              width: 2
+            }
+          },
+          splitLine: {
+            distance: -30,
+            length: 30,
+            lineStyle: {
+              color: '#fff',
+              width: 4
+            }
+          },
+          axisLabel: {
+            color: 'auto',
+            distance: 40,
+            fontSize: 14
+          },
+          detail: {
+            valueAnimation: true,
+            formatter: '{value} BPM',
+            color: 'red',
+            fontSize: 18
+          },
+          data: [
+            {
+              value: 70
+            }
+          ]
+        }
+      ]
+    };
+  
+    myChart.setOption(option);
+
+
+
+
+    var chartDomZone = document.getElementById('graphZone');
+    var myChartZone = echarts.init(chartDomZone);
+    var optionZone;
+
+    optionZone = {
+      dataset: {
+        source: [
+          ['score', 'zone'],
+          [0, 'WARM-UP / RECOVERY'],
+          [0, 'FUNDAMENTAL ENDURANCE 60 to 70%'],
+          [0, 'ACTIVE ENDURANCE 70 to 80%'],
+          [0, 'RESISTANCE 80 to 90%'],
+          [0, 'HEAVY RESISTANCE > 90% ']
+        ]
+      },
+      grid: { containLabel: true },
+      xAxis: { name: 'score' },
+      yAxis: { type: 'category' },
+      visualMap: {
+        orient: 'horizontal',
+        left: 'center',
+        min: 10,
+        max: 100,
+        text: ['High zone', 'Low zone'],
+        // Map the score column to color
+        dimension: 0,
+        inRange: {
+          color: ['#65B581', '#FFCE34', '#FD665F']
+        }
+      },
+      series: [
+        {
+          type: 'bar',
+          encode: {
+            // Map the "amount" column to X axis.
+            x: 'score',
+            // Map the "zone" column to Y axis
+            y: 'zone'
+          }
+        }
+      ]
+    };
+
+    myChartZone.setOption(optionZone);
+
+
+
+
+
+
+
+
+
+
+    
+    async function onReadHeartRateMeasureButtonClick() {
+      try {
+        if (!bluetoothDevice) {
+          await requestDevice();
+        }
+        await connectDeviceAndCacheCharacteristics();
+    
+        console.log('Starting HR Notifications...');
+        await HeartRateMeasureCharacteristic.startNotifications();
+        console.log('> Notifications started');
+
+      } catch(error) {
+        console.log('Argh! ' + error);
+      }
+    }
+    
+    async function requestDevice() {
+      console.log('Requesting any Bluetooth Device...');
+      bluetoothDevice = await navigator.bluetooth.requestDevice({
+        filters:[{
+            services: ['heart_rate'],
+        }],
+          //acceptAllDevices: true,
+          optionalServices: ['heart_rate']});
+
+          console.log('> Name:             ' + bluetoothDevice.name);
+          console.log('> Id:               ' + bluetoothDevice.id);
+          console.log('> Connected:        ' + bluetoothDevice.gatt.connected);
+    }
+    
+    async function connectDeviceAndCacheCharacteristics() {
+      if (bluetoothDevice.gatt.connected && HeartRateMeasureCharacteristic) {
+        return;
+      }
+    
+      console.log('Connecting to GATT Server...');
+      const server = await bluetoothDevice.gatt.connect();
+    
+      console.log('Getting heart_rate Service...');
+      const service = await server.getPrimaryService('heart_rate');
+    
+      console.log('Getting heart_rate_measurement Level Characteristic...');
+      HeartRateMeasureCharacteristic = await service.getCharacteristic('heart_rate_measurement');
+    
+      HeartRateMeasureCharacteristic.addEventListener('characteristicvaluechanged',
+          handleHeartRateMeasureChanged);
+
+    }
+    
+    /* This function will be called when `readValue` resolves and
+     * characteristic value changes since `characteristicvaluechanged` event
+     * listener has been added. */
+    function handleHeartRateMeasureChanged(event) {
+      let HeartRateMeasure = event.target.value.getUint8(1);
+      console.log('> HR Level is ' + HeartRateMeasure );
+      
+
+        //fill buffer
+        bufferBpm.push(HeartRateMeasure);
+
+
+        //$("#bpm").html(HeartRateMeasure + " &hearts;");
+        //$("#bpmvalue").html(HeartRateMeasure);
+        //$("#bpm").show();
+
+        //average BPM calculation
+        var sum = 0;
+        for( var i = 0; i < bufferBpm.length; i++ ){
+            sum += parseInt( bufferBpm[i], 10 ); //don't forget to add the base
+        }
+        var avgBpm = sum / bufferBpm.length;
+
+
+        let duration = Math.round((Date.now() - startTime)/1000);
+
+        updateCharts();
+
+
+
+    }
+
+
+
+  function calculateKarvonen(bpm)
+  {
+      // Todo : variable to update in function of the user
+      var hrMax = 180;
+      var hrRest = 70;
+
+      var karvonenPercent = Math.round(100 * (bpm - hrRest) / (hrMax - hrRest));
+      return karvonenPercent;
+  }
+
+  function updateCharts()
+      {
+        option_graph.series[0].data = bufferBpm;
+        option_graph.title.text = "HR";
+        chartHR.setOption(option_graph);
+
+        //update gauge
+        option.series[0].data[0].value = bufferBpm[bufferBpm.length - 1]
+        myChart.setOption(option);
+
+        //Update graphe zone
+        z1=0;
+        z2=0;
+        z3=0;
+        z4=0;
+        z5=0;
+        bufferBpm.forEach(element => {
+          percentCardio = calculateKarvonen(element);
+          if(percentCardio<=60)
+          {
+              //BLUE: WARM-UP / RECOVERY 50 to 60% of your %cardio
+              z1++;
+          }
+          else if(percentCardio<=70)
+          {
+              //GREEN: FUNDAMENTAL ENDURANCE 60 to 70% of your %cardio
+              z2++;
+          }
+          else if(percentCardio<=80)
+          {
+              //YELLOW: ACTIVE ENDURANCE 70 to 80% of your %cardio
+              z3++;
+          }
+          else if(percentCardio<=90)
+          {
+              //ORANGE: RESISTANCE 80 to 90% of your %cardio
+              z4++;
+
+          }
+          else
+          {
+            z5++;
+          }
+        });
+
+
+        optionZone.dataset.source = [
+          ['score', 'zone'],
+          [(100*z1/bufferBpm.length), 'WARM-UP / RECOVERY'],
+          [(100*z2/bufferBpm.length), 'FUNDAMENTAL ENDURANCE 60 to 70%'],
+          [(100*z3/bufferBpm.length), 'ACTIVE ENDURANCE 70 to 80%'],
+          [(100*z4/bufferBpm.length), 'RESISTANCE 80 to 90%'],
+          [(100*z5/bufferBpm.length), 'HEAVY RESISTANCE > 90% ']
+        ];
+        myChartZone.setOption(optionZone);
+
+      }
+
+
+</script>
+
+
+
+<script>
+    document.querySelector('#readHeartRateMeasure').addEventListener('click', function() {
+      if (isWebBluetoothEnabled()) {
+        onReadHeartRateMeasureButtonClick();
+      }
+    });
+  
+    function isWebBluetoothEnabled() {
+    if (navigator.bluetooth) {
+      return true;
+    } else {
+      Alert('Web Bluetooth API is not available.\n' +
+          'Please make sure the "Experimental Web Platform features" flag is enabled.');
+      return false;
+    }
+  }
+</script>
+
+
+
+
+
+
+
+  </body>
+</html>
