@@ -1,0 +1,292 @@
+<!doctype html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Web Bluetooth / FTMS BLE Elliptical Bike</title>  
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.js"></script>    
+    <style>
+      td { font-size: 30px; padding: 15px; }
+    </style>
+    
+  </head>
+
+  <body>
+    
+    <h1>Web Bluetooth / FTMS BLE Elliptical Bike</h1>
+  
+    <h2>Control</h2>
+    <button id="readFTMSMeasure">Connect FTMS BLE Elliptical Bike</button>
+    
+    <table>
+      <tr>
+        <td>SPEED</td>
+        <td>RESISTANCE</td>
+        <td>POWER</td>
+      </tr>
+      <tr>
+        <td id="valueTabSpeed"></td>
+        <td id="valueTabResistance"></td>
+        <td id="valueTabPower"></td>
+      </tr>
+    </table>
+
+    <div id="graphSpeed" style="width:100%;height: 20vh;"></div>
+    <div id="graphResistance" style="width:100%;height: 20vh;"></div>
+    <div id="graphPower" style="width:100%;height: 20vh;"></div>
+    <div id="graphDistance" style="width:100%;height: 20vh;"></div>
+    <div id="graphHR" style="width:100%;height: 20vh;"></div>
+
+
+
+
+  <script>
+
+    //Init chart
+    var domSpeed = document.getElementById('graphSpeed');
+    var domResistance = document.getElementById('graphResistance');
+    var domPower = document.getElementById('graphPower');
+    var domDistance = document.getElementById('graphDistance');
+    var domHR = document.getElementById('graphHR');
+    
+
+    var chartSpeed = echarts.init(domSpeed, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartResistance = echarts.init(domResistance, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartPower = echarts.init(domPower, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartDistance = echarts.init(domDistance, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartHR = echarts.init(domHR, null, { renderer: 'canvas', useDirtyRect: false  });
+
+    var option;
+    option = {
+      title: {
+          text: 'Graph'
+        },
+    xAxis: {
+        type: 'category'
+    },
+    yAxis: {
+        type: 'value'
+    },
+    series: [
+        {
+        data: [],
+        type: 'line',
+        smooth: false
+        }
+    ]
+    };
+
+    chartSpeed.setOption(option);
+    chartResistance.setOption(option);
+    chartPower.setOption(option);
+    chartDistance.setOption(option);
+    chartHR.setOption(option);
+    
+
+    window.addEventListener('resize', chartSpeed.resize);
+    window.addEventListener('resize', chartResistance.resize);
+    window.addEventListener('resize', chartPower.resize);
+    window.addEventListener('resize', chartDistance.resize);
+    window.addEventListener('resize', chartHR.resize);
+
+
+
+    var bluetoothDevice;
+    var FTMSMeasureCharacteristic;
+
+    var dataSpeed = [];
+    var dataPower = [];
+    var dataResistance = [];
+    var dataDistance = [];
+    var dataHR = [];
+    
+    
+    const serviceFTMS = 0x1826;
+    const crossTrainerData = 0x2ACE;
+
+    function connect() {
+      console.log('Requesting FTMS Bluetooth Device...');
+      navigator.bluetooth.requestDevice({
+            filters:[{
+                services: [serviceFTMS],
+            }],
+              //acceptAllDevices: true,
+              optionalServices: ['heart_rate']}).
+        then(device => {
+        console.log('Connecting to GATT Server...');
+        return device.gatt.connect();
+      })
+      .then(server => {
+        console.log('Getting Service...');
+        return server.getPrimaryService(serviceFTMS);
+      })
+      .then(service => {
+        console.log('Getting Characteristic...');
+        return service.getCharacteristic(crossTrainerData);
+      })
+      .then(characteristic => {
+        var crossTrainerDataCharacteristic = characteristic;
+        return crossTrainerDataCharacteristic.startNotifications().then(_ => {
+          console.log('> Notifications started');
+          crossTrainerDataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+        });
+      })
+      .catch(error => {
+        console.log('Argh! ' + error);
+      });
+      
+    }
+    
+    /* This function will be called when `readValue` resolves and
+     * characteristic value changes since `characteristicvaluechanged` event
+     * listener has been added. */
+    function handleNotifications(event) {
+      let value = event.target.value;
+        let a = [];
+        // Convert raw data bytes to hex values just for the sake of showing something.
+        // In the "real" world, you'd use data.getUint8, data.getUint16 or even
+        // TextDecoder to process raw data bytes.
+        for (let i = 0; i < value.byteLength; i++) {
+            a.push('0x' + ('00' + value.getUint8(i).toString(16)).slice(-2));
+        }
+        console.log('> ' + a.join(' '));
+
+        flags = value.getUint16(0, /*littleEndian=*/true);
+        nextPosition = 4 // 2octets for flags, 2octets for instant speed
+        nextPosition = nextPosition + 1 ; //Movement Direction
+
+
+
+        /*     
+        Example here of a flags to indicate which data is present in the data message
+        flags 884
+        0000 0011 (bit2 : Instantaneous Cadence , bit3 : average cadence)
+        0111 0100 (5 resistance Level, 6 Instantaneous Power, 7 Average Power, 9 heart rate)
+        */
+
+        if ((flags & (1 << 1)) != 0) {console.log('> Average Speed');posAvgSpeed=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 2)) != 0) {console.log('> Total Distance');posTotDistance=nextPosition; nextPosition+=3;}
+        if ((flags & (1 << 3)) != 0) {console.log('> step count');posStepCount=nextPosition; nextPosition+=4;}
+        if ((flags & (1 << 4)) != 0) {console.log('> stride count');posStrideCount=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 5)) != 0) {console.log('> elevation gain');posElevationGain=nextPosition; nextPosition+=4;}
+        if ((flags & (1 << 6)) != 0) {console.log('> ramp angle');posRampAngle=nextPosition; nextPosition+=4;}
+        if ((flags & (1 << 7)) != 0) {console.log('> Resistance Level');posResistance=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 8)) != 0) {console.log('> Instantaneous Power');posInstPower=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 9)) != 0) {console.log('> Average Power');posAvgPower=nextPosition; nextPosition+=2;} // else +1 ???? because mandatory total expend energy
+        if ((flags & (1 << 10)) != 0) {console.log('> Expended Energy');posEnergy=nextPosition; nextPosition+=5;}
+        if ((flags & (1 << 11)) != 0) {console.log('> Heart Rate');posHR=nextPosition; nextPosition+=1;}
+        if ((flags & (1 << 12)) != 0) {console.log('> Metabolic Equivalent');posMET=nextPosition; nextPosition+=1;}
+        if ((flags & (1 << 13)) != 0) {console.log('> Elapsed Time');posElapsedTime=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 14)) != 0) {console.log('> Remaining Time ');posRemainTime=nextPosition; nextPosition+=2;}
+        if ((flags & (1 << 15)) != 0) {console.log('> Movement direction ');posMovDir=nextPosition; nextPosition+=2;}
+
+     
+       
+
+
+        // instantaneous speed
+        speed = value.getUint16(3, /*littleEndian=*/true)/100;
+        document.querySelector('#valueTabSpeed').textContent = speed;
+
+        //distance
+        distance = value.getUint16(posTotDistance, /*littleEndian=*/true);
+        distance_complement = value.getUint8(posTotDistance + 2, /*littleEndian=*/true);
+        distance_complement = distance_complement << 16;
+        distance = distance + distance_complement;
+        console.log('> Distance ' + distance);
+
+        dataSpeed.push(speed);
+        dataDistance.push(distance);
+
+        if (typeof posInstPower != "undefined")
+        {
+          console.log('> POWER ' + (value.getInt16(posInstPower, /*littleEndian=*/true)));
+          power = value.getInt16(posInstPower, /*littleEndian=*/true);
+          document.querySelector('#valueTabPower').textContent = power;
+          dataPower.push(power);
+        }
+
+        if (typeof posResistance != "undefined")
+        {
+          //console.log('> Cadence ' + (value.getUint16(posInstCadence, /*littleEndian=*/true)*0.5));
+          Resistance =  (value.getInt16(posResistance, /*littleEndian=*/true));
+          document.querySelector('#valueTabResistance').textContent = Resistance;
+          dataResistance.push(Resistance);
+        }
+
+        if (typeof posHR != "undefined")
+        {
+          console.log('> HR ' + (value.getUint8(posHR, /*littleEndian=*/true)));
+          hr = value.getUint8(posHR, /*littleEndian=*/true);
+          dataHR.push(hr);
+        }
+
+        if (typeof posElaspedTime != "undefined")
+        {
+          console.log('> Elapsed time ' + (value.getUint16(posElaspedTime, /*littleEndian=*/true)));
+        }
+
+        updateCharts();
+      }
+
+      function updateCharts()
+      {
+        option.series[0].data = dataHR;
+        option.title.text = "HR";
+        chartHR.setOption(option);
+
+        option.series[0].data = dataResistance;
+        option.title.text = "Resistance";
+        chartResistance.setOption(option);
+
+        option.series[0].data = dataSpeed;
+        option.title.text = "Speed";
+        chartSpeed.setOption(option);
+
+        option.series[0].data = dataPower;
+        option.title.text = "Power";
+        chartPower.setOption(option);
+
+        option.series[0].data = dataDistance;
+        option.title.text = "Distance";
+        chartDistance.setOption(option);
+
+      }
+    
+
+</script>
+
+
+
+<script>
+    document.querySelector('#readFTMSMeasure').addEventListener('click', function() {
+      if (isWebBluetoothEnabled()) {
+        connect();
+      }
+    });
+  
+</script>
+
+
+
+  <script>
+   
+    function isWebBluetoothEnabled() {
+      if (navigator.bluetooth) {
+        return true;
+      } else {
+        ChromeSamples.setStatus('Web Bluetooth API is not available.\n' +
+            'Please make sure the "Experimental Web Platform features" flag is enabled.');
+        return false;
+      }
+    }
+  </script>
+
+    
+
+  </body>
+</html>
