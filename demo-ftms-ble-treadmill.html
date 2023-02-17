@@ -6,127 +6,139 @@
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <title>Web Bluetooth / FTMS BLE</title>
-    <script>
-      // Add a global error event listener early on in the page load, to help ensure that browsers
-      // which don't support specific functionality still end up displaying a meaningful message.
-      window.addEventListener('error', function(error) {
-        if (ChromeSamples && ChromeSamples.setStatus) {
-          console.error(error);
-          ChromeSamples.setStatus(error.message + ' (Your browser may not support this feature.)');
-          error.preventDefault();
-        }
-      });
-    </script>
-        
+    <title>Web Bluetooth / FTMS BLE Treadmill</title>  
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.js"></script>    
+    <style>
+      td { font-size: 30px; padding: 15px; }
+    </style>
     
   </head>
 
   <body>
     
-    <h1>Web Bluetooth / FTMS Treadmill BLE</h1>
+    <h1>Web Bluetooth / FTMS BLE Treadmill</h1>
   
     <h2>Control</h2>
-    <button id="readFTMSMeasure">Connect FTMS Treadmill BLE</button>
+    <button id="readFTMSMeasure">Connect FTMS BLE Treadmill</button>
+    
+    <table>
+      <tr>
+        <td>SPEED</td>
+        <td>INCLINATION</td>
+        <td>KCAL</td>
+      </tr>
+      <tr>
+        <td id="valueTabSpeed"></td>
+        <td id="valueTabInclination"></td>
+        <td id="valueTabKcal"></td>
+      </tr>
+    </table>
+
+    <div id="graphSpeed" style="width:100%;height: 20vh;"></div>
+    <div id="graphDistance" style="width:100%;height: 20vh;"></div>
+    <div id="graphKcal" style="width:100%;height: 20vh;"></div>
+    <div id="graphInclination" style="width:100%;height: 20vh;"></div>
+    <div id="graphHR" style="width:100%;height: 20vh;"></div>
+
+
+
+
+  <script>
+
+    //Init chart
+    var domSpeed = document.getElementById('graphSpeed');
+    var domInclination = document.getElementById('graphInclination');
+    var domKcal = document.getElementById('graphKcal');
+    var domDistance = document.getElementById('graphDistance');
+    var domHR = document.getElementById('graphHR');
     
 
-    <h2>Result</h2>
-    <div style="background-color:brown; font-size: 50px;" id="valueSpeed">Null</div>
+    var chartSpeed = echarts.init(domSpeed, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartInclination = echarts.init(domInclination, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartKcal = echarts.init(domKcal, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartDistance = echarts.init(domDistance, null, { renderer: 'canvas', useDirtyRect: false  });
+    var chartHR = echarts.init(domHR, null, { renderer: 'canvas', useDirtyRect: false  });
 
-    <h2>Live Output</h2>
-    <div id="output" class="output">
-      <div id="content"></div>
-      <div id="status"></div>
-      <pre id="log"></pre>
-    </div>
-
-
-  <script>
-    //Log management
-    var ChromeSamples = {
-      log: function() {
-        var line = Array.prototype.slice.call(arguments).map(function(argument) {
-          return typeof argument === 'string' ? argument : JSON.stringify(argument);
-        }).join(' ');
-  
-        document.querySelector('#log').textContent += line + '\n';
-      },
-  
-      clearLog: function() {
-        document.querySelector('#log').textContent = '';
-      },
-  
-      setStatus: function(status) {
-        document.querySelector('#status').textContent = status;
-      },
-  
-      setContent: function(newContent) {
-        var content = document.querySelector('#content');
-        while(content.hasChildNodes()) {
-          content.removeChild(content.lastChild);
+    var option;
+    option = {
+      title: {
+          text: 'Graph'
+        },
+    xAxis: {
+        type: 'category'
+    },
+    yAxis: {
+        type: 'value'
+    },
+    series: [
+        {
+        data: [],
+        type: 'line',
+        smooth: false
         }
-        content.appendChild(newContent);
-      }
+    ]
     };
-  </script>
 
-  <script>
+    chartSpeed.setOption(option);
+    chartInclination.setOption(option);
+    chartKcal.setOption(option);
+    chartDistance.setOption(option);
+    chartHR.setOption(option);
+    
+
+    window.addEventListener('resize', chartSpeed.resize);
+    window.addEventListener('resize', chartInclination.resize);
+    window.addEventListener('resize', chartKcal.resize);
+    window.addEventListener('resize', chartDistance.resize);
+    window.addEventListener('resize', chartHR.resize);
+
+
+
     var bluetoothDevice;
     var FTMSMeasureCharacteristic;
-    
-    async function onReadFTMSMeasureButtonClick() {
-      try {
-        if (!bluetoothDevice) {
-          await requestDevice();
-        }
-        await connectDeviceAndCacheCharacteristics();
-    
-        log('Starting FTMS Notifications...');
-        //console.log(FTMSMeasureCharacteristic.readValue());
-        //await FTMSMeasureCharacteristic.startNotifications();
-        log('> Notifications started');
 
-      } catch(error) {
-        log('Argh! ' + error);
-      }
-    }
+    var dataSpeed = [];
+    var dataKcal = [];
+    var dataInclination = [];
+    var dataDistance = [];
+    var dataHR = [];
     
-    async function requestDevice() {
-      log('Requesting any Bluetooth Device...');
-      bluetoothDevice = await navigator.bluetooth.requestDevice({
-        filters:[{
-            services: [parseInt('0x1826')],
-        }],
-          //acceptAllDevices: true,
-          optionalServices: ['heart_rate']});
+    
+    const serviceFTMS = 0x1826;
+    const treadmillData = 0x2acd;
 
-        log('> Name:             ' + bluetoothDevice.name);
-        log('> Id:               ' + bluetoothDevice.id);
-        log('> Connected:        ' + bluetoothDevice.gatt.connected);
-    }
-    
-    async function connectDeviceAndCacheCharacteristics() {
-      if (bluetoothDevice.gatt.connected && FTMSMeasureCharacteristic) {
-        return;
-      }
-    
-      log('Connecting to GATT Server...');
-      const server = await bluetoothDevice.gatt.connect();
+    function connect() {
+      console.log('Requesting FTMS Bluetooth Device...');
+      navigator.bluetooth.requestDevice({
+            filters:[{
+                services: [serviceFTMS],
+            }],
+              //acceptAllDevices: true,
+              optionalServices: ['heart_rate']}).
+        then(device => {
+        console.log('Connecting to GATT Server...');
+        return device.gatt.connect();
+      })
+      .then(server => {
+        console.log('Getting Service...');
+        return server.getPrimaryService(serviceFTMS);
+      })
+      .then(service => {
+        console.log('Getting Characteristic...');
+        return service.getCharacteristic(treadmillData);
+      })
+      .then(characteristic => {
+        var treadmillDataCharacteristic = characteristic;
+        return treadmillDataCharacteristic.startNotifications().then(_ => {
+          console.log('> Notifications started');
+          treadmillDataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+        });
+      })
+      .catch(error => {
+        console.log('Argh! ' + error);
+      });
       
-
-      log('Getting ftms Service...');
-      const service = await server.getPrimaryService(parseInt('0x1826'));
-    
-      log('Getting ftms treadmill Characteristic...');
-      FTMSCharacteristic = await service.getCharacteristic(parseInt('0x2acd'));//
-      
-      await FTMSCharacteristic.startNotifications();
-
-        log('> Notifications started');
-        FTMSCharacteristic.addEventListener('characteristicvaluechanged',
-            handleNotifications);
-      
-
     }
     
     /* This function will be called when `readValue` resolves and
@@ -142,39 +154,15 @@
             a.push('0x' + ('00' + value.getUint8(i).toString(16)).slice(-2));
         }
         console.log('> ' + a.join(' '));
-        //log('> ' + (value.getUint16(2, /*littleEndian=*/true)/100));
 
         flags = value.getUint16(0, /*littleEndian=*/true);
         nextPosition = 4 // 2octets for flags, 2octets for instant speed
-        //log('> flags' + flags);
 
-        /*
-        example Domyos W900
-        > Total Distance
-        > Inclination
-        > Expended Energy
-        > Heart Rate
-        > Elapsed Time
-
-        0x8c //0
-        0x05 
-        0x1c //speed ===
-        0x02 //speed ====
-        0x90 //dis =====
-        0x01 //dis ====
-        0x00 //dis ====
-        0x05 //incl
-        0x00 //incl
-        0x02 //ramp
-        0x00 //ramp
-        0x12 //tot energy ======
-        0x00 //tot energy ======
-        0xf0 //eneg/h
-        0x00 //eneg/h
-        0x04 //ener/m
-        0x00 // HR
-        0x2a // time ====
-        0x00 //18 time ====
+        /*     
+        Example here of a flags to indicate which data is present in the data message
+        flags 884
+        0000 0011 (bit2 : Instantaneous Inclination , bit3 : average Inclination)
+        0111 0100 (5 resistance Level, 6 Instantaneous Power, 7 Average Power, 9 heart rate)
         */
 
         if ((flags & (1 << 1)) != 0) {/*log('> Average Speed');*/posAvgSpeed=nextPosition; nextPosition+=2;}
@@ -192,51 +180,80 @@
 
         // instantaneous speed
         speed = value.getUint16(2, /*littleEndian=*/true)/100;
-        document.querySelector('#valueSpeed').style.backgroundColor = "chartreuse";
-        document.querySelector('#valueSpeed').textContent = speed;
+        document.querySelector('#valueTabSpeed').textContent = speed;
 
-        //distance
-        distance = value.getUint16(posTotDistance, /*littleEndian=*/true);
+         //distance
+         distance = value.getUint16(posTotDistance, /*littleEndian=*/true);
         distance_complement = value.getUint8(posTotDistance + 2, /*littleEndian=*/true);
         distance_complement = distance_complement << 16;
         distance = distance + distance_complement;
-        //log('> Distance ' + distance);
+        console.log('> Distance ' + distance);
+
+        dataSpeed.push(speed);
+        dataDistance.push(distance);
 
         if (typeof posInclination != "undefined")
         {
-          log('> Inclinaison % ' + (value.getInt16(posInclination, /*littleEndian=*/true)/10));
-          //log('> ramp ' + (value.getInt16(posInclination+2, /*littleEndian=*/true)));
+          inclination = (value.getInt16(posInclination, /*littleEndian=*/true)/10);
+          console.log('> Inclinaison % ' + inclination );
+          dataInclination.push(inclination);
+          document.querySelector('#valueTabInclination').textContent = inclination;
+          
         }
 
         
 
         if (typeof posKcal != "undefined")
         {
-          log('> Kcal ' + (value.getUint16(posKcal, /*littleEndian=*/true)));
+          kcal = (value.getUint16(posKcal, /*littleEndian=*/true));
+          console.log('> Kcal ' + kcal);
+          dataKcal.push(kcal);
+          document.querySelector('#valueTabKcal').textContent = kcal;
+          
         }
+
+       
 
         if (typeof posHR != "undefined")
         {
-          log('> HR ' + (value.getUint8(posHR, /*littleEndian=*/true)));
+          console.log('> HR ' + (value.getUint8(posHR, /*littleEndian=*/true)));
+          hr = value.getUint8(posHR, /*littleEndian=*/true);
+          dataHR.push(hr);
         }
 
         if (typeof posElaspedTime != "undefined")
         {
-          log('> Elapsed time ' + (value.getUint16(posElaspedTime, /*littleEndian=*/true)));
+          console.log('> Elapsed time ' + (value.getUint16(posElaspedTime, /*littleEndian=*/true)));
         }
-        
 
-        
+        updateCharts();
+      }
 
-        }
+      function updateCharts()
+      {
+        option.series[0].data = dataHR;
+        option.title.text = "HR";
+        chartHR.setOption(option);
+
+        option.series[0].data = dataInclination;
+        option.title.text = "Inclination";
+        chartInclination.setOption(option);
+
+        option.series[0].data = dataSpeed;
+        option.title.text = "Speed";
+        chartSpeed.setOption(option);
+
+        option.series[0].data = dataKcal;
+        option.title.text = "Kcal";
+        chartKcal.setOption(option);
+
+        option.series[0].data = dataDistance;
+        option.title.text = "Distance";
+        chartDistance.setOption(option);
+
+      }
     
-    /* This function will be called when `readValue` resolves and
-     * characteristic value changes since `characteristicvaluechanged` event
-     * listener has been added. */
-    function handleFTMSChanged(event) {
-      let FTMSMeasure = event.target.value.getUint8(1);
-      log('> FTMS Level is ' + FTMSMeasure + '%');
-    }
+
 </script>
 
 
@@ -244,7 +261,7 @@
 <script>
     document.querySelector('#readFTMSMeasure').addEventListener('click', function() {
       if (isWebBluetoothEnabled()) {
-        onReadFTMSMeasureButtonClick();
+        connect();
       }
     });
   
@@ -253,8 +270,7 @@
 
 
   <script>
-    log = ChromeSamples.log;
-  
+   
     function isWebBluetoothEnabled() {
       if (navigator.bluetooth) {
         return true;
