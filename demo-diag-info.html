@@ -133,9 +133,7 @@
       log('Getting ftms Service...');
       const service = await server.getPrimaryService(parseInt('0x180A'));
     
-      log('Getting ftms treadmill Characteristic...');
       var enc = new TextDecoder("utf-8");
-
 
       ManufacturerCharacteristic = await service.getCharacteristic(parseInt('0x2A29'));
       const value = await ManufacturerCharacteristic.readValue();
