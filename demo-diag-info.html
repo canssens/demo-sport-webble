@@ -44,6 +44,11 @@
     </div>
 
 
+    <hr />
+    <h2>History log</h2>
+    <div id="historyLog"></div>
+
+
   <script>
     //Log management
     var ChromeSamples = {
@@ -85,6 +90,10 @@
 
       newCell1.innerHTML = field;
       newCell2.innerHTML = data;
+
+      // append also to the history log
+      historyLogBuffer = historyLogBuffer + field + " : " + data + "<br>"; 
+
     }
   </script>
 
@@ -166,6 +175,10 @@
       addRow("dataTable", "Software Revision", enc.decode(valueSoftware));
       
 
+      // log history
+      let currentDate = new Date().toJSON().slice(0, 10);
+      localStorage.historyLog = "<h3>" + currentDate + "</h3>" +  historyLogBuffer + localStorage.historyLog;
+
       //GATT Service 0x180A Device Information
       //GATT Characteristic and Object Type 0x2A29 Manufacturer Name String
       /*
@@ -205,6 +218,11 @@
         onReadFTMSMeasureButtonClick();
       }
     });
+
+    var historyLogBuffer = "";
+    // load history log
+    document.getElementById("historyLog").innerHTML = localStorage.historyLog;
+
   
 </script>
 
