@@ -144,6 +144,13 @@
     
       var enc = new TextDecoder("utf-8");
 
+      var testExistingSoftwareRevision = false;
+      ListCharacteristic =  await service.getCharacteristics();
+      ListCharacteristic.forEach(element => {
+        console.log("charac existing : " + element.uuid);
+        if(element.uuid.includes("2a28")) testExistingSoftwareRevision = true;
+      });
+
       ManufacturerCharacteristic = await service.getCharacteristic(parseInt('0x2A29'));
       const value = await ManufacturerCharacteristic.readValue();
       addRow("dataTable", "Manufacturer Name", enc.decode(value));
@@ -170,10 +177,13 @@
       const valueFirmware = await FirmwareCharacteristic.readValue();
       addRow("dataTable", "Firmware Revision", enc.decode(valueFirmware));
 
+      if(testExistingSoftwareRevision)
+      {
       SoftwareCharacteristic = await service.getCharacteristic(parseInt('0x2A28'));
       const valueSoftware = await SoftwareCharacteristic.readValue();
       addRow("dataTable", "Software Revision", enc.decode(valueSoftware));
-      
+      }
+      else addRow("dataTable", "Software Revision", "Not Found");
 
       // log history
       let currentDate = new Date().toJSON().slice(0, 10);
